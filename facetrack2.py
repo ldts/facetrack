@@ -4,7 +4,6 @@
 # http://instructables.com/id/Pan-Tilt-face-tracking-with-the-raspberry-pi
 # and various other places
 
-from RPIO import PWM
 from multiprocessing import Process, Queue
 import time
 import cv2
@@ -29,17 +28,15 @@ initPan = ((_ServoPanUL - _ServoPanLL) / 2) + _ServoPanLL
 initTilt = ((_ServoTiltUL - _ServoTiltLL) / 2) + _ServoTiltLL
 
 #size of the video
-width = 320
-height = 240
+width = 600 
+height = 400
 
 capture = cv2.VideoCapture(0)				# Get ready to start getting images from the webcam
 capture.set(cv2.cv.CV_CAP_PROP_FRAME_WIDTH, width)
 capture.set(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT, height)
 
-#frontalface = cv2.CascadeClassifier("haarcascade_frontalface_alt2.xml")		# frontal face pattern detection
 profileface = cv2.CascadeClassifier("haarcascade_profileface.xml")		# side face pattern detection
 frontalface = cv2.CascadeClassifier("lbpcascade_frontalface.xml")		# frontal face pattern detection
-#profileface = cv2.CascadeClassifier("lbpcascade_profileface.xml")		# side face pattern detection
 
 face = [0,0,0,0]	# This will hold the array that OpenCV returns when it finds a face: (makes a rectangle)
 Cface = [0,0]		# Center of the face: a point calculated from the above variable
@@ -49,12 +46,7 @@ lastface = 0		# int 1-3 used to speed up detection. The script is looking for a 
 			# 	doesn't find it, it's set back to zero and on the next loop it will search for all three.-
 			# 	This basically tripples the detect time so long as the face hasn't moved much.
             
-PWM.setup()
-PWM.init_channel(0)
-
 #init servos to center
-PWM.add_channel_pulse(0, pPan, 0, initPan)
-PWM.add_channel_pulse(0, pTilt, 0, initTilt)
 
 ServoPanCP = Queue()	# Servo zero current position, sent by subprocess and read by main process
 ServoTiltCP = Queue()	# Servo one current position, sent by subprocess and read by main process
@@ -83,15 +75,11 @@ def P0():	# Process 0 controlles Pan servo
 		if _ServoPanCP < _ServoPanDP:					# if ServoPanCP less than ServoPanDP
 			_ServoPanCP += 1						# incriment ServoPanCP up by one
 			ServoPanCP.put(_ServoPanCP)					# move the servo that little bit
-			PWM.clear_channel_gpio(0, pPan)
-			PWM.add_channel_pulse(0, pPan, 0, _ServoPanCP)
 			if not ServoPanCP.empty():				# throw away the old ServoPanCP value,-
 				trash = ServoPanCP.get()				# 	it's no longer relevent
 		if _ServoPanCP > _ServoPanDP:					# if ServoPanCP greater than ServoPanDP
 			_ServoPanCP -= 1						# incriment ServoPanCP down by one
 			ServoPanCP.put(_ServoPanCP)					# move the servo that little bit
-			PWM.clear_channel_gpio(0, pPan)
-			PWM.add_channel_pulse(0, pPan, 0, _ServoPanCP)
 			if not ServoPanCP.empty():				# throw away the old ServoPanCP value,-
 				trash = ServoPanCP.get()				# 	it's no longer relevent
 		if _ServoPanCP == _ServoPanDP:	        # if all is good,-
@@ -115,15 +103,11 @@ def P1():	# Process 1 controlles Tilt servo using same logic as above
 		if _ServoTiltCP < _ServoTiltDP:
 			_ServoTiltCP += 1
 			ServoTiltCP.put(_ServoTiltCP)
-			PWM.clear_channel_gpio(0, pTilt)
-			PWM.add_channel_pulse(0, pTilt, 0, _ServoTiltCP)
 			if not ServoTiltCP.empty():
 				trash = ServoTiltCP.get()
 		if _ServoTiltCP > _ServoTiltDP:
 			_ServoTiltCP -= 1
 			ServoTiltCP.put(_ServoTiltCP)
-			PWM.clear_channel_gpio(0, pTilt)
-			PWM.add_channel_pulse(0, pTilt, 0, _ServoTiltCP)
 			if not ServoTiltCP.empty():
 				trash = ServoTiltCP.get()
 		if _ServoTiltCP == _ServoTiltDP:
@@ -196,13 +180,9 @@ try:
 
         if not faceFound:
             if lastface == 0 or lastface == 1:
-                aframe = capture.grab()	# there seems to be an issue in OpenCV or V4L or my webcam-
-                aframe = capture.grab()	# 	driver, I'm not sure which, but if you wait too long,
-                aframe = capture.grab()	#	the webcam consistantly gets exactly five frames behind-
                 aframe = capture.grab()	#	realtime. So we just grab a frame five times to ensure-
                 aframe = capture.read()[1]	#	we have the most up-to-date image.
-                #fface = frontalface.detectMultiScale(aframe, 1.3, 4, (cv2.cv.CV_HAAR_DO_CANNY_PRUNING + cv2.cv.CV_HAAR_FIND_BIGGEST_OBJECT + cv2.cv.CV_HAAR_DO_ROUGH_SEARCH), (60,60))
-                fface = frontalface.detectMultiScale(aframe, 1.1, 2, 0, (60,60))
+                fface = frontalface.detectMultiScale(aframe, 1.1, 2, 0, (50,50))
                 if fface != ():			# if we found a frontal face...
                     lastface = 1		# set lastface 1 (so next loop we will only look for a frontface)
                     for f in fface:		# f in fface is an array with a rectangle representing a face
@@ -211,13 +191,9 @@ try:
 
         if not faceFound:				# if we didnt find a face yet...
             if lastface == 0 or lastface == 2:	# only attempt it if we didn't find a face last loop or if-
-                aframe = capture.grab()	# 	THIS method was the one who found it last loop
-                aframe = capture.grab()
-                aframe = capture.grab()	# again we grab some frames, things may have gotten stale-
                 aframe = capture.grab()	# since the frontalface search above
                 aframe = capture.read()[1]
-                pfacer = profileface.detectMultiScale(aframe, 1.3, 4, (cv2.cv.CV_HAAR_DO_CANNY_PRUNING + cv2.cv.CV_HAAR_FIND_BIGGEST_OBJECT + cv2.cv.CV_HAAR_DO_ROUGH_SEARCH), (80,80))
-                #pfacer = profileface.detectMultiScale(aframe, 1.1, 2, 0,(50,60))
+                pfacer = profileface.detectMultiScale(aframe, 1.1, 2, 0,(50,50))
                 if pfacer != ():		# if we found a profile face...
                     lastface = 2
                     for f in pfacer:
@@ -226,14 +202,10 @@ try:
 
         if not faceFound:				# a final attempt
             if lastface == 0 or lastface == 3:	# this is another profile face search, because OpenCV can only-
-                aframe = capture.grab()	#	detect right profile faces, if the cam is looking at-
-                aframe = capture.grab()	#	someone from the left, it won't see them. So we just...
-                aframe = capture.grab()
                 aframe = capture.grab()
                 aframe = capture.read()[1]
                 cv2.flip(aframe,1,aframe)	#	flip the image
-                pfacel = profileface.detectMultiScale(aframe, 1.3, 4, (cv2.cv.CV_HAAR_DO_CANNY_PRUNING + cv2.cv.CV_HAAR_FIND_BIGGEST_OBJECT + cv2.cv.CV_HAAR_DO_ROUGH_SEARCH), (80,80))
-                #pfacel = profileface.detectMultiScale(aframe, 1.1, 2, 0, (50,60))
+                pfacel = profileface.detectMultiScale(aframe, 1.1, 2, 0, (50,50))
                 if pfacel != ():
                     lastface = 3
                     for f in pfacel:
@@ -253,8 +225,7 @@ try:
         
         print str(Cface[0]) + "," + str(Cface[1])
            
-
-        cv2.cv.Rectangle(cv2.cv.fromarray(aframe), (x,y), (x+w, y+h), cv2.cv.RGB(255, 0, 0), 3, 8, 0)
+        cv2.cv.Rectangle(cv2.cv.fromarray(aframe), (x,y), (x+w, y+h), cv2.cv.RGB(0, 255, 0), 1, 1, 0)
         cv2.imshow("video", aframe)
         cv2.waitKey(1)
 
@@ -293,7 +264,5 @@ except KeyboardInterrupt:
     pass
     
 finally:
-    PWM.clear_channel(0)
-    PWM.cleanup()
     capture.release()
     cv2.cv.DestroyWindow("video")
